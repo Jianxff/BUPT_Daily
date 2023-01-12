@@ -7,6 +7,7 @@ import json
 import ddddocr
 import redis
 import re
+from pypushdeer import PushDeer
 ocr = ddddocr.DdddOcr(show_ad=False)
 
 # 设置debug等级

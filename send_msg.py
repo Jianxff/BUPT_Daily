@@ -29,8 +29,9 @@ def send_msg(type,to,msg):
                 to) + "&message=" + msg + " HTTP/1.1\r\nHost:" + ADDR + ":" + str(PORT_SEND)  + "\r\nConnection: close\r\n\r\n"
 
         client.send(payload.encode("utf-8"))
-    except Exception as e:
-        logging.warning(e)
+    except Exception as exp:
+        logging.warning(exp)
+        return exp
     
     client.close()
-    return 0
+    return None

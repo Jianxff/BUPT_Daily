@@ -155,7 +155,8 @@ class crawler:
             exit()
    
 # catch news list         
-    def catch(self,print_item = True):
+
+    def catch(self):
         self.login_check()
         
         # catch notice, ncov and publish 
@@ -177,49 +178,65 @@ class crawler:
                 page_url = doc.find(class_='p_no').find('a').attrs.get('href')
                 page_node = page_url[page_url.find('total'):page_url.find('&',page_url.find('&')+1)-1]
                 
-                for i in range(1,4 if type == 'notice' else 2):
+                score = 0
+                for i in range(1,3 if type == 'notice' else 2):
                     response = self.get(self.url['my'] + sec_url.format(page_node + str(i) + '&'))
                     doc = BS(response.text,features='lxml')
                     for ele in doc.select('.newslist > li'):
+                        score = score + 1
                         # get link to details
                         href = ele.find('a').attrs.get('href')
                         
                         # get id, title, time
                         id = str(href[href.find('wbnewsid=')+9:])
                         title = ele.find('a').attrs.get('title')
+                        # time_ = int(time.time())
                         time_ = int(time.mktime(time.strptime(ele.find(class_='time').text,'%Y-%m-%d')))
                         
                         # check and insert
                         pre = self.redis.zcard(redis_key)
-                        self.redis.zadd(redis_key,mapping={id:time_})
+                        self.redis.zadd(redis_key,mapping={id:score})
                         cur = self.redis.zcard(redis_key)
                         
                         # new item added
                         if cur > pre:
                             # print
-                            print('id:{} time:{} title:{}'.format(id,time_,title))  if print_item else None
+                            brief = 'id:{} time:{} title:{}'.format(id,time_,title)
+                            print(brief)
                             
-                            # new count added    
+                            # new count added
                             get_new = get_new + 1
                             
-                            # get detail
-                            msg = '{}[id={}]\n{}'.format(tag,id,self.get_detail(href))
+                            # filter
+                            if key == 'public' and title.find('外协事项公示') >= 0 :
+                                pass
+                            else:
+                                # get detail
+                                detail = '{}[id={}]\n{}'.format(tag,id,self.get_detail(href))
                             
-                            # send message
-                            send_msg(type='group',to='926797189',msg=msg) 
-                            time.sleep(0.5)
-                            send_msg(type='private',to='1015620755',msg=msg)            
-                            time.sleep(1)
+                                # send message
+                                res = send_msg(type='group',to='926797189',msg=detail)
+                                if res != None:
+                                    self.push(msg='exception: \n' + str(res))
+                                else:
+                                    time.sleep(0.5)
+                                    send_msg(type='private',to='1015620755',msg=detail)            
+                                    time.sleep(1)
+
+                                self.push(msg=brief)
                             
                         if cur > 100:
                             # pop cache
-                            self.redis.zpopmin(redis_key)
+                            self.redis.zpopmax(redis_key,count = cur - 100)
+
                 
                 logging.info('news of type [%s] update : %d',key,get_new)
                 
-            except Exception as e:
-                logging.error('catching abort caused by:\n %s',str(e))
-                send_msg(type='private',to=self.redis.get('qbot_root'),msg='[catching abort]\n'+str(e))
+            except Exception as exp:
+                logging.error('catching abort caused by:\n %s',str(exp))
+                res = send_msg(type='private',to=self.redis.get('qbot_root'),msg='exception: \n'+str(exp))
+                if res != None:
+                    self.push(msg='exception: ' + str(exp))
                 return
             
         logging.info('all done.')
@@ -241,6 +258,20 @@ class crawler:
         content = node.find('div',class_='singleinfo').text
         
         return '[' + title + ']\n' + post + '\n' + content
+    
+    def push(self,key=None, msg=None):
+        if key == None:
+            key=self.redis.get('pushdeer_root')
+        if len(key) == 0 or msg == None:
+            logging.warn('incomplete arguments.')
+            return
+        
+        try:
+            pushdeer = PushDeer(pushkey=key)
+            pushdeer.send_text('[BUPT_Daily] ' + msg)
+            logging.info('msg push success')
+        except Exception as e:
+            logging.warn(e)
     
         
         
